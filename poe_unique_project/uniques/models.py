@@ -1,6 +1,5 @@
 from django.db import models
 
-
 class Slot(models.TextChoices):
     ARMOUR = "armour", "Armour"
     WEAPON = "weapon", "Weapon"
@@ -12,59 +11,54 @@ class Slot(models.TextChoices):
     MAP = "map", "Map"
     OTHER = "other", "Other"
 
+def base_icon_path(instance, filename):   return f"bases/{instance.id}/{filename}"
+def unique_icon_path(instance, filename): return f"uniques/{instance.id}/{filename}"
 
 class ItemCategory(models.Model):
-    name = models.CharField(max_length=100, unique=True)   # example: "Helmet", "Boots"
+    name = models.CharField(max_length=100, unique=True)          # "Helmet", "Boots"
     slot = models.CharField(max_length=20, choices=Slot.choices, default=Slot.OTHER)
-    # poe_class is for the base items defined from the raw data from POE itself, it will help us with debugging or adding new bases
-    poe_class = models.CharField(max_length=100, unique=True)
+    poe_class = models.CharField(max_length=100, unique=True)     # raw PoE class 
 
-    def __str__(self):
-        return f"{self.name} ({self.slot})"
+    def __str__(self): return f"{self.name} ({self.slot})"
 
 class BaseItem(models.Model):
     name = models.CharField(max_length=255, unique=True)
-    # Keep both: FK to normalized category + raw class string for debugging/backfills
     category = models.ForeignKey(ItemCategory, on_delete=models.PROTECT, related_name="bases")
-    item_class = models.CharField(max_length=100, blank=True)  # example: Helmets
+    item_class = models.CharField(max_length=100, blank=True)     # raw PoE class duplicate for convenience
 
-    def __str__(self):
-        return self.name
+    # images
+    source_icon_url = models.URLField(blank=True, null=True)
+    icon  = models.ImageField(upload_to=base_icon_path, blank=True, null=True)
+    thumb = models.ImageField(upload_to=base_icon_path, blank=True, null=True)
 
+    def __str__(self): return self.name
 
 class UniqueItem(models.Model):
     name = models.CharField(max_length=255, unique=True)
     base = models.ForeignKey(BaseItem, on_delete=models.CASCADE, related_name="uniques")
-    requirements = models.JSONField(default=dict, blank=True)   # {"level": 70, "str": 85, "dex": 85}
+    requirements = models.JSONField(default=dict, blank=True)
     flavor_text = models.TextField(blank=True, null=True)
-    icon_url = models.URLField(blank=True, null=True)
+    icon_url = models.URLField(blank=True, null=True)             # source URL
 
-    # prepared for later pricing
+    # price placeholder for later
     price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
+    # cached images
+    icon  = models.ImageField(upload_to=unique_icon_path, blank=True, null=True)
+    thumb = models.ImageField(upload_to=unique_icon_path, blank=True, null=True)
+
     class Meta:
-        indexes = [
-            models.Index(fields=["name"]),
-        ]
+        indexes = [models.Index(fields=["name"])]
 
-    def __str__(self):
-        return f"{self.name} ({self.base.name})"
-
+    def __str__(self): return f"{self.name} ({self.base.name})"
 
 class ItemStat(models.Model):
     unique_item = models.ForeignKey(UniqueItem, related_name="stats", on_delete=models.CASCADE)
     text = models.CharField(max_length=255)
-    type = models.CharField(
-        max_length=20,
-        choices=[("explicit", "Explicit"), ("implicit", "Implicit")],
-    )
+    type = models.CharField(max_length=20, choices=[("explicit", "Explicit"), ("implicit", "Implicit")])
     order = models.IntegerField(default=0)
 
     class Meta:
-        indexes = [
-            models.Index(fields=["text"]),
-            models.Index(fields=["type"]),
-        ]
+        indexes = [models.Index(fields=["text"]), models.Index(fields=["type"])]
 
-    def __str__(self):
-        return f"{self.unique_item.name} - {self.text}"
+    def __str__(self): return f"{self.unique_item.name} - {self.text}"
